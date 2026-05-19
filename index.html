@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JO-TRANS | OCR Angka Pemindai DT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between antialiased">
+
+    <header class="bg-slate-800 p-4 shadow-md border-b border-slate-700 text-center">
+        <h1 class="text-sm font-black tracking-wider text-blue-400 uppercase">
+            <i class="fas fa-eye-low-vision mr-1.5 animate-pulse"></i> AI TEXT OCR SCANNER
+        </h1>
+        <p class="text-[10px] text-slate-400 mt-1">Pemindai Angka Lembar Kerja Otomatis PT Jotun</p>
+    </header>
+
+    <main class="flex-1 flex flex-col items-center justify-center p-4 relative">
+        
+        <div class="relative w-full max-w-sm aspect-[4/3] bg-black rounded-2xl overflow-hidden border-2 border-slate-700 shadow-2xl flex items-center justify-center">
+            
+            <video id="webcam" autoplay playsinline class="w-full h-full object-cover"></video>
+            
+            <div class="absolute inset-x-8 h-12 border-2 border-dashed border-blue-500 rounded-lg bg-blue-500/10 flex items-center justify-center pointer-events-none">
+                <div class="w-full h-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-bounce"></div>
+            </div>
+
+            <div id="ocrLoader" class="hidden absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+                <div class="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <span class="text-xs font-bold text-blue-400 tracking-wider uppercase animate-pulse">AI Sedang Membaca Teks...</span>
+            </div>
+        </div>
+
+        <canvas id="captureCanvas" class="hidden"></canvas>
+
+        <div class="w-full max-w-sm mt-5 bg-slate-800 p-4 rounded-xl border border-slate-700">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-tight block mb-1">Hasil Scan Teks Angka:</span>
+            <div id="resultText" class="text-lg font-black tracking-widest text-emerald-400 bg-slate-950/60 p-3 rounded-lg border border-slate-900 text-center min-h-[52px] flex items-center justify-center">
+                Belum ada data terpindai
+            </div>
+        </div>
+    </main>
+
+    <footer class="p-4 bg-slate-800 border-t border-slate-700 flex justify-center pb-6">
+        <button onclick="takeSnapAndOCR()" class="w-full max-w-sm bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 px-6 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
+            <i class="fas fa-camera text-base"></i> AMBIL FOTO & BACA ANGKA
+        </button>
+    </footer>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('captureCanvas');
+        const resultDiv = document.getElementById('resultText');
+        const loader = document.getElementById('ocrLoader');
+
+        // 1. OTOMATIS AKTIFKAN KAMERA BELAKANG UTAMA HP SAAT WEB DIBUKA
+        async function startKameraBelakang() {
+            try {
+                // Konfigurasi wajib meminta kamera belakang (environment) dengan resolusi makro tajam
+                const constraints = {
+                    video: {
+                        facingMode: { exact: "environment" },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                };
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+            } catch (err) {
+                console.log("Kamera belakang khusus tidak ketemu, mencoba kamera standar...");
+                // Jalur cadangan jika dicoba di laptop / PC biasa
+                navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+                    .then(stream => { video.srcObject = stream; })
+                    .catch(e => { resultDiv.innerText = "Kamera tidak diizinkan / diblokir browser!"; });
+            }
+        }
+
+        // Jalankan kamera langsung saat halaman dimuat
+        window.addEventListener('DOMContentLoaded', startKameraBelakang);
+
+        // 2. FUNGSI MENANGKAP GAMBAR DAN MEMPROSES LEWAT ENGINE AI TESSERACT
+        function takeSnapAndOCR() {
+            loader.classList.remove('hidden'); // Memunculkan animasi loading AI
+            resultDiv.innerText = "Memproses...";
+
+            // Atur dimensi ukuran kanvas penangkap foto agar sesuai frame video asli
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            
+            // Gambar frame video saat ini langsung ke kanvas
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Konversi kanvas menjadi file gambar Base64 Data URL berformat PNG tajam
+            const imageDataUrl = canvas.toDataURL('image/png');
+
+            // Jalankan Engine AI Tesseract.js untuk mengekstrak tulisan dari gambar
+            Tesseract.recognize(
+                imageDataUrl,
+                'eng', // Menggunakan kamus karakter standar internasional (Angka + Huruf Inggris)
+                { 
+                    logger: m => console.log(m) // Memantau progress pembacaan di console log
+                }
+            ).then(({ data: { text } }) => {
+                // Filter teks hasil scan: Hanya ambil karakter angka (0-9) dan buang teks sampah/spasi berlebih
+                let cleanNumbers = text.replace(/[^0-9]/g, '').trim();
+                
+                if (cleanNumbers.length > 0) {
+                    resultDiv.innerHTML = `<span class="text-xl text-emerald-400 font-extrabold tracking-widest">${cleanNumbers}</span>`;
+                } else {
+                    resultDiv.innerHTML = `<span class="text-xs text-amber-500">Angka tidak terbaca, silakan dekatkan kamera atau cari cahaya terang</span>`;
+                }
+            }).catch(error => {
+                resultDiv.innerHTML = `<span class="text-xs text-red-500">Error AI: ${error.message}</span>`;
+            }).finally(() => {
+                loader.classList.add('hidden'); // Sembunyikan kembali animasi loading
+            });
+        }
+    </script>
+</body>
+</html>
